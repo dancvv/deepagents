@@ -311,6 +311,20 @@ def test_read_handles_malformed_output() -> None:
     assert "not json at all" in result.error
 
 
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_read_reports_transport_truncation(monkeypatch: pytest.MonkeyPatch, *, use_async: bool) -> None:
+    sandbox = MockSandbox()
+    clipped = ExecuteResponse(output='{"encoding": "base64", "content": "AAEC', exit_code=0, truncated=True)
+    monkeypatch.setattr(sandbox, "execute", Mock(return_value=clipped))
+
+    result = await sandbox.aread("/sample.bin") if use_async else sandbox.read("/sample.bin")
+
+    assert result.file_data is None
+    assert result.error is not None
+    assert "/sample.bin" in result.error
+    assert "truncated" in result.error
+
+
 def test_read_handles_non_dict_json_output() -> None:
     """Test that read() returns error when execute() returns valid JSON that is not a dict."""
     sandbox = MockSandbox()
@@ -359,7 +373,7 @@ def test_parse_read_output_plumbs_pagination_fields() -> None:
         }
     )
 
-    result = _parse_read_output(output, "/test/file.txt")
+    result = _parse_read_output(ExecuteResponse(output=output), "/test/file.txt")
 
     assert result.error is None
     assert result.total_lines == 10
@@ -372,7 +386,7 @@ def test_parse_read_output_defaults_pagination_fields_to_none() -> None:
     """A payload without pagination keys (e.g. binary) leaves the fields unset."""
     output = json.dumps({"encoding": "utf-8", "content": "a\nb"})
 
-    result = _parse_read_output(output, "/test/file.txt")
+    result = _parse_read_output(ExecuteResponse(output=output), "/test/file.txt")
 
     assert result.error is None
     assert result.total_lines is None
@@ -385,7 +399,7 @@ def test_parse_read_output_missing_content_returns_error() -> None:
     """A success payload lacking `content` degrades to an error, not a KeyError."""
     output = json.dumps({"encoding": "utf-8", "total_lines": 3})
 
-    result = _parse_read_output(output, "/test/file.txt")
+    result = _parse_read_output(ExecuteResponse(output=output), "/test/file.txt")
 
     assert result.file_data is None
     assert result.error is not None
@@ -397,7 +411,7 @@ def test_parse_read_output_inconsistent_pagination_returns_error() -> None:
     # start_line without end_line trips ReadResult.__post_init__.
     output = json.dumps({"encoding": "utf-8", "content": "a\nb", "start_line": 1})
 
-    result = _parse_read_output(output, "/test/file.txt")
+    result = _parse_read_output(ExecuteResponse(output=output), "/test/file.txt")
 
     assert result.file_data is None
     assert result.error is not None
@@ -415,7 +429,7 @@ def test_parse_read_output_invalid_pagination_type_returns_error() -> None:
         }
     )
 
-    result = _parse_read_output(output, "/test/file.txt")
+    result = _parse_read_output(ExecuteResponse(output=output), "/test/file.txt")
 
     assert result.file_data is None
     assert result.error is not None

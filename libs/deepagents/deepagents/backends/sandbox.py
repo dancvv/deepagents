@@ -917,8 +917,10 @@ def _build_read_cmd(file_path: str, offset: int, limit: int) -> str:
     )
 
 
-def _parse_read_output(output: str, file_path: str) -> ReadResult:
-    output = output.rstrip()
+def _parse_read_output(result: ExecuteResponse, file_path: str) -> ReadResult:
+    if result.truncated:
+        return ReadResult(error=f"File '{file_path}': sandbox truncated the read response at its output limit.")
+    output = result.output.rstrip()
     try:
         data = json.loads(output)
     except (json.JSONDecodeError, ValueError):
@@ -1745,7 +1747,7 @@ class BaseSandbox(SandboxBackendProtocol, ABC):
             `ReadResult` with `file_data` on success or `error` on failure.
         """
         result = self.execute(_build_read_cmd(file_path, offset, limit))
-        return _parse_read_output(result.output, file_path)
+        return _parse_read_output(result, file_path)
 
     async def aread(
         self,
@@ -1755,7 +1757,7 @@ class BaseSandbox(SandboxBackendProtocol, ABC):
     ) -> ReadResult:
         """Async version of `read`, delegating to `aexecute`."""
         result = await self.aexecute(_build_read_cmd(file_path, offset, limit))
-        return _parse_read_output(result.output, file_path)
+        return _parse_read_output(result, file_path)
 
     def _write_preflight(self, file_path: str) -> WriteResult | None:
         """Create parent directories for `write()`.
